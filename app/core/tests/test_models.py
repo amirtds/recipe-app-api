@@ -58,3 +58,13 @@ class ModelTests(TestCase):
         )
         # 2. check the tag name is equal to tag str
         self.assertEqual(str(tag), tag.name)
+
+    def test_ingredient_str(self):
+        """ Text representation of the Ingredient """
+        # create ingredient and a user
+        ingredient = models.Ingredient.objects.create(
+            user=sample_user(),
+            name="test ingredient name"
+        )
+        # check ingredient name is equal to __str__ ingredient
+        self.assertEqual(str(ingredient), ingredient.name)
