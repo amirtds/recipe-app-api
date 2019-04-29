@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -26,8 +27,8 @@ class UserManager(BaseUserManager):
 
         return user
 
-    """ Create and Save SUperuser """
     def create_superuser(self, email, password):
+        """ Create and Save Superuser """
         # 1. create user using create_user fundtion
         user = self.create_user(
             email=email,
@@ -51,3 +52,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
+
+
+class Tag(models.Model):
+    """Tag to be used for receipe"""
+
+    name = models.CharField(max_length=255)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+    )
+
+    def __str__(self):
+        return self.name
