@@ -5,12 +5,13 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import Tag
+from core.models import Tag, Ingredient
 
-from recipe.serializers import TagSerializer
+from recipe.serializers import TagSerializer, IngredientSerializer
 
 
 TAGS_URL = reverse('recipe:tag-list')
+INGREDIENTS_URL = reverse("recipe:ingredient-list")
 
 
 # 1. test that api is not public
@@ -81,7 +82,10 @@ class PrivateTagApiTests(TestCase):
         # 3.3 check the response is 201
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # 3.4 check if the tag exist in database
-        exists = Tag.objects.filter(name=payload['name'], user=self.user)
+        exists = Tag.objects.filter(
+            name=payload['name'],
+            user=self.user
+            ).exists()
         self.assertTrue(exists)
 
     # 4. check if tag not get create if payload is empty
@@ -89,4 +93,89 @@ class PrivateTagApiTests(TestCase):
         paylaod = {"name": ""}
         response = self.client.post(TAGS_URL, paylaod)
         # 4.1 check the repsonse is 400 bad request
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# 5. Test ingredient API - Public
+class TestIngredientApiPiblic(TestCase):
+    # 5.1 create not authenticated client
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_api_fail_not_authenticated(self):
+        # 5.2 hit the ingredient list endpoint
+        response = self.client.get(INGREDIENTS_URL)
+        # 5.3 check if the status is unauthorized
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+# 6. Test ingredient API - Private
+class TestIngredientApiPrivate(TestCase):
+    # 6.1 make setup function to create client and user
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="test@example.com",
+            password="test@123"
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_api_list_success_authenticated(self):
+        # 6.2 hit the ingredient endpoint as authenticated user
+        Ingredient.objects.create(
+            user=self.user,
+            name="test ingredient"
+        )
+        response = self.client.get(INGREDIENTS_URL)
+        # 6.3.1 check if status code is HTTP_200_OK
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # 6.3.2 check if there is ingredient in the data
+        self.assertEqual(len(response.data), 1)
+        ingredients = Ingredient.objects.all().order_by('-name')
+        serializer = IngredientSerializer(ingredients, many=True)
+        self.assertEqual(response.data, serializer.data)
+
+    # 6.4 check if user can only see his/her ingredient
+    def test_api_list_limited_to_user(self):
+        # 6.4.1 create new user
+        user2 = get_user_model().objects.create_user(
+            email="test2@example.com",
+            password="test@123"
+        )
+        ingredient1 = Ingredient.objects.create(
+            user=self.user,
+            name="ingredient1"
+        )
+        # 6.4.2 create new ingredient with new user
+        ingredient2 = Ingredient.objects.create(
+            user=user2,
+            name="ingredient2"
+        )
+        # 6.4.3 check response only contains user's ingredient
+        response = self.client.get(INGREDIENTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['name'], ingredient1.name)
+        self.assertFalse(response.data[0]['name'] == ingredient2.name)
+
+    # 6.5 Test ingredient creation endpoint
+    def test_create_ingredient_successful(self):
+        # 6.5.2 create a payload to contain ingredient
+        payload = {'name': 'ingredient1'}
+        # 6.5.3 hit the endpoint to create an ingredient
+        response = self.client.post(INGREDIENTS_URL, payload)
+        # 6.5.4 check if the status is HTTP_201_CREATED
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # 6.5.5 check if the response contains the created ingredient
+        exists = Ingredient.objects.filter(
+            user=self.user,
+            name=payload['name'],
+        ).exists()
+        self.assertTrue(exists)
+
+    # 6.6 check creation fails without fields
+    def test_ingredient_creation_fails_missing_fields(self):
+        payload = {"name": ""}
+        response = self.client.post(INGREDIENTS_URL, payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
